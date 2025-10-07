@@ -4,6 +4,7 @@ import { Layout } from '@/components/layout/Layout'
 import dayjs from 'dayjs'
 import duration from 'dayjs/plugin/duration'
 import { API_URL } from '@/constants/backend.constants'
+import { X, Check } from 'lucide-react'
 
 dayjs.extend(duration)
 
@@ -26,44 +27,65 @@ interface ICustomer {
 	id: number
 	fullName: string
 	phone: string
-	rentalDateTime: string
-	rentalPeriod: string
+	description?: string
+	rentalStart: string | null
+	rentalEnd: string | null
 	customerGears?: ICustomerGear[]
 	totalSum?: number
 	status?: StatusType
 	timeLeft?: string
+	completed?: boolean
 }
 
 const getCustomerTimeData = (c: ICustomer) => {
+	if (!c.rentalStart || !c.rentalEnd)
+		return { status: 'Ожидание' as StatusType, timeLeft: '' }
+
 	const now = dayjs()
-	const start = dayjs(c.rentalDateTime)
-	const end = start.add(Number(c.rentalPeriod || 0), 'hour')
+	const start = dayjs(c.rentalStart)
+	const end = dayjs(c.rentalEnd)
 
 	let status: StatusType
-	if (now.isBefore(start)) status = 'Ожидание'
-	else if (now.isBefore(end)) status = 'Аренда'
-	else status = 'Закончилась'
-
 	let timeLeft = ''
-	if (status === 'Аренда') {
+
+	if (now.isBefore(start)) {
+		status = 'Ожидание'
+		const diff = start.diff(now)
+		const dur = dayjs.duration(diff)
+		const parts: string[] = []
+		if (dur.days()) parts.push(`${dur.days()} дн`)
+		if (dur.hours()) parts.push(`${dur.hours()} ч`)
+		if (dur.minutes()) parts.push(`${dur.minutes()} м`)
+		if (!dur.days() && !dur.hours() && !dur.minutes())
+			parts.push(`${dur.seconds()} с`)
+		timeLeft = parts.join(' ')
+	} else if (now.isBefore(end)) {
+		status = 'Аренда'
 		const diff = end.diff(now)
 		const dur = dayjs.duration(diff)
 		const parts: string[] = []
 		if (dur.days()) parts.push(`${dur.days()} дн`)
 		if (dur.hours()) parts.push(`${dur.hours()} ч`)
 		if (dur.minutes()) parts.push(`${dur.minutes()} м`)
-		if (!dur.days() && !dur.hours()) parts.push(`${dur.seconds()} с`)
+		if (!dur.days() && !dur.hours() && !dur.minutes())
+			parts.push(`${dur.seconds()} с`)
 		timeLeft = parts.join(' ')
+	} else {
+		status = 'Закончилась'
+		timeLeft = c.completed ? '' : '1 с'
 	}
 
-	return { status, timeLeft, start, end }
+	return { status, timeLeft }
 }
 
 export function RentPage() {
 	const [customers, setCustomers] = useState<ICustomer[]>([])
-	const [showModal, setShowModal] = useState(false)
+	const [showExtendModal, setShowExtendModal] = useState(false)
+	const [showAddTimeModal, setShowAddTimeModal] = useState(false)
 	const [extendHours, setExtendHours] = useState('')
 	const [extendSum, setExtendSum] = useState('')
+	const [addHours, setAddHours] = useState('')
+	const [addSum, setAddSum] = useState('')
 	const [selectedCustomer, setSelectedCustomer] = useState<ICustomer | null>(
 		null
 	)
@@ -77,15 +99,14 @@ export function RentPage() {
 	const fetchCustomers = async () => {
 		try {
 			const { data } = await axios.get<ICustomer[]>(`${API_URL}/api/customer`)
-			const mapped = mapCustomers(data)
-			setCustomers(sortCustomers(mapped))
+			setCustomers(sortCustomers(mapCustomers(data)))
 		} catch (err) {
 			console.error(err)
 		}
 	}
 
-	const mapCustomers = (data: ICustomer[]) => {
-		return data.map(c => {
+	const mapCustomers = (data: ICustomer[]) =>
+		data.map(c => {
 			const { status, timeLeft } = getCustomerTimeData(c)
 			let totalSum = c.totalSum ?? 0
 			if (!c.totalSum && c.customerGears) {
@@ -96,30 +117,28 @@ export function RentPage() {
 			}
 			return { ...c, status, totalSum, timeLeft }
 		})
-	}
 
 	const updateTimeLeft = () => {
-		setCustomers(prev => sortCustomers(mapCustomers(prev)))
+		setCustomers(prev =>
+			sortCustomers(
+				prev.map(c => {
+					const { status, timeLeft } = getCustomerTimeData(c)
+					return { ...c, status, timeLeft }
+				})
+			)
+		)
 	}
 
 	const sortCustomers = (arr: ICustomer[]) => {
 		return [...arr].sort((a, b) => {
-			const { start: startA, end: endA } = getCustomerTimeData(a)
-			const { start: startB, end: endB } = getCustomerTimeData(b)
-
-			const statusOrder = (s: StatusType) =>
-				s === 'Аренда' ? 1 : s === 'Ожидание' ? 2 : 3
-
-			const diff = statusOrder(a.status!) - statusOrder(b.status!)
-			if (diff !== 0) return diff
-
-			if (a.status === 'Аренда' && b.status === 'Аренда') return endA.diff(endB)
-			if (a.status === 'Ожидание' && b.status === 'Ожидание')
-				return startA.diff(startB)
-			if (a.status === 'Закончилась' && b.status === 'Закончилась')
-				return endB.diff(endA)
-
-			return 0
+			const order = (c: ICustomer) => {
+				if (c.status === 'Закончилась' && !c.completed) return 0
+				if (c.status === 'Аренда') return 1
+				if (c.status === 'Ожидание') return 2
+				if (c.status === 'Закончилась' && c.completed) return 3
+				return 4
+			}
+			return order(a) - order(b)
 		})
 	}
 
@@ -127,7 +146,14 @@ export function RentPage() {
 		setSelectedCustomer(customer)
 		setExtendHours('')
 		setExtendSum('')
-		setShowModal(true)
+		setShowExtendModal(true)
+	}
+
+	const handleAddTimeClick = (customer: ICustomer) => {
+		setSelectedCustomer(customer)
+		setAddHours('')
+		setAddSum('')
+		setShowAddTimeModal(true)
 	}
 
 	const handleExtendSave = async () => {
@@ -137,27 +163,93 @@ export function RentPage() {
 		if (!addHours || !addSum) return alert('Укажи корректные данные')
 
 		try {
-			const updatedPeriod = String(
-				Number(selectedCustomer.rentalPeriod) + addHours
-			)
+			const updatedEnd = dayjs(selectedCustomer.rentalEnd)
+				.add(addHours, 'hour')
+				.toISOString()
 			const updatedSum = (selectedCustomer.totalSum ?? 0) + addSum
 
 			await axios.put(`${API_URL}/api/customer/${selectedCustomer.id}`, {
-				rentalPeriod: updatedPeriod,
+				rentalEnd: updatedEnd,
 				totalSum: updatedSum
 			})
 
 			setCustomers(prev =>
 				prev.map(c =>
 					c.id === selectedCustomer.id
-						? { ...c, rentalPeriod: updatedPeriod, totalSum: updatedSum }
+						? { ...c, rentalEnd: updatedEnd, totalSum: updatedSum }
 						: c
 				)
 			)
-			setShowModal(false)
+			setShowExtendModal(false)
 		} catch (err) {
 			console.error(err)
 			alert('Ошибка при продлении аренды')
+		}
+	}
+
+	const handleAddTimeSave = async () => {
+		if (!selectedCustomer) return
+		const addH = Number(addHours)
+		const addS = Number(addSum)
+		if (!addH || !addS) return alert('Укажи корректные данные')
+
+		try {
+			const updatedEnd = dayjs(selectedCustomer.rentalEnd)
+				.add(addH, 'hour')
+				.toISOString()
+			const updatedSum = (selectedCustomer.totalSum ?? 0) + addS
+
+			await axios.put(`${API_URL}/api/customer/${selectedCustomer.id}`, {
+				rentalEnd: updatedEnd,
+				totalSum: updatedSum
+			})
+
+			setCustomers(prev =>
+				prev.map(c =>
+					c.id === selectedCustomer.id
+						? { ...c, rentalEnd: updatedEnd, totalSum: updatedSum }
+						: c
+				)
+			)
+			setShowAddTimeModal(false)
+		} catch (err) {
+			console.error(err)
+			alert('Ошибка при добавлении времени')
+		}
+	}
+
+	const handleConfirm = async (id: number) => {
+		try {
+			await axios.put(`${API_URL}/api/customer/${id}/confirm`)
+			setCustomers(prev =>
+				prev.map(c =>
+					c.id === id
+						? { ...c, completed: true, timeLeft: '', status: 'Закончилась' }
+						: c
+				)
+			)
+		} catch (err) {
+			console.error(err)
+			alert('Ошибка подтверждения')
+		}
+	}
+
+	const handleCloseEarly = async (id: number) => {
+		try {
+			const now = dayjs().toISOString()
+			await axios.put(`${API_URL}/api/customer/${id}/close-early`)
+			setCustomers(prev =>
+				sortCustomers(
+					prev.map(c =>
+						c.id === id
+							? { ...c, rentalEnd: now, status: 'Закончилась', timeLeft: '1 с' }
+							: c
+					)
+				)
+			)
+		} catch (err) {
+			console.error(err)
+			alert('Ошибка закрытия аренды')
 		}
 	}
 
@@ -165,21 +257,26 @@ export function RentPage() {
 		<Layout>
 			<div className='w-full max-w-6xl mx-auto mt-8 px-4'>
 				<div className='overflow-x-auto'>
-					<table className='min-w-full bg-[#1c1c1f] rounded-xl border border-[#2b2b2e] overflow-hidden'>
+					<table className='min-w-full bg-[#1c1c1f] rounded-t-xl border border-[#2b2b2e] overflow-hidden'>
 						<thead>
 							<tr className='bg-[#25252a] text-white'>
 								<th className='px-6 py-3 text-left'>ФИО</th>
 								<th className='px-6 py-3 text-left'>Телефон</th>
 								<th className='px-6 py-3 text-left'>Статус</th>
 								<th className='px-6 py-3 text-left'>Сумма</th>
-								<th className='px-6 py-3 text-left'>Истекает через</th>
+								<th className='px-6 py-3 text-left'>
+									Истекает / Начинается через
+								</th>
 								<th className='px-6 py-3 text-left'>Снаряжение</th>
-								<th className='px-6 py-3 text-left'></th>
 							</tr>
 						</thead>
 						<tbody>
 							{customers.map(c => (
-								<tr key={c.id} className='border-b border-[#2b2b2e]'>
+								<tr
+									key={c.id}
+									className='border-b border-[#2b2b2e] cursor-pointer hover:bg-[#2a2a2e]'
+									onClick={() => setSelectedCustomer(c)}
+								>
 									<td className='px-6 py-3'>{c.fullName}</td>
 									<td className='px-6 py-3'>{c.phone}</td>
 									<td className='px-6 py-3'>
@@ -189,10 +286,14 @@ export function RentPage() {
 													? 'bg-orange-500 text-white'
 													: c.status === 'Ожидание'
 													? 'bg-gray-500 text-white'
+													: c.status === 'Закончилась' && !c.completed
+													? 'bg-green-600 text-white'
 													: 'bg-[#3a3a3a] text-white'
 											}`}
 										>
-											{c.status}
+											{c.status === 'Закончилась' && c.completed
+												? 'Завершена'
+												: c.status}
 										</span>
 									</td>
 									<td className='px-6 py-3'>{c.totalSum}₽</td>
@@ -202,16 +303,6 @@ export function RentPage() {
 											?.map(g => `${g.count} ${g.gear?.name ?? '–'}`)
 											.join(', ')}
 									</td>
-									<td className='px-6 py-3'>
-										{c.status === 'Аренда' && (
-											<button
-												onClick={() => handleExtendClick(c)}
-												className='bg-blue-400 hover:bg-blue-500 text-white px-3 py-1 rounded-md text-sm'
-											>
-												Продлить
-											</button>
-										)}
-									</td>
 								</tr>
 							))}
 						</tbody>
@@ -219,11 +310,88 @@ export function RentPage() {
 				</div>
 			</div>
 
-			{showModal && (
+			{selectedCustomer && (
+				<div className='fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 overflow-auto'>
+					<div className='bg-[#1c1c1f] text-white w-full max-w-3xl rounded-xl p-6 shadow-lg relative flex flex-col gap-3'>
+						<X
+							className='absolute top-4 right-4 cursor-pointer hover:text-gray-300'
+							size={24}
+							onClick={() => setSelectedCustomer(null)}
+						/>
+						<h2 className='text-2xl font-bold'>{selectedCustomer.fullName}</h2>
+						<div className='flex flex-col gap-2'>
+							<p>
+								<span className='font-semibold'>Телефон:</span>{' '}
+								{selectedCustomer.phone}
+							</p>
+							<p>
+								<span className='font-semibold'>Статус:</span>{' '}
+								{selectedCustomer.status}
+							</p>
+							<p>
+								<span className='font-semibold'>Сумма:</span>{' '}
+								{selectedCustomer.totalSum}₽
+							</p>
+							<p>
+								<span className='font-semibold'>Время:</span>{' '}
+								{selectedCustomer.timeLeft || '–'}
+							</p>
+							<p>
+								<span className='font-semibold'>Снаряжение:</span>{' '}
+								{selectedCustomer.customerGears
+									?.map(g => `${g.count} ${g.gear?.name ?? '–'}`)
+									.join(', ') || '–'}
+							</p>
+							{selectedCustomer.description && (
+								<p>
+									<span className='font-semibold'>Описание:</span>{' '}
+									{selectedCustomer.description}
+								</p>
+							)}
+						</div>
+
+						<div className='flex gap-3 mt-4 flex-wrap'>
+							{selectedCustomer.status === 'Аренда' && (
+								<>
+									<button
+										onClick={() => handleExtendClick(selectedCustomer)}
+										className='px-3 py-1.5 bg-orange-600 hover:bg-orange-700 rounded-md text-sm'
+									>
+										Продлить аренду
+									</button>
+									<button
+										onClick={() => handleAddTimeClick(selectedCustomer)}
+										className='px-3 py-1.5 bg-yellow-600 hover:bg-yellow-700 rounded-md text-sm'
+									>
+										Добавить время за сумму
+									</button>
+									<button
+										onClick={() => handleCloseEarly(selectedCustomer.id)}
+										className='px-3 py-1.5 bg-gray-600 hover:bg-gray-700 rounded-md text-sm'
+									>
+										Преждевременно завершить
+									</button>
+								</>
+							)}
+							{selectedCustomer.status === 'Закончилась' &&
+								!selectedCustomer.completed && (
+									<button
+										onClick={() => handleConfirm(selectedCustomer.id)}
+										className='px-3 py-1.5 bg-green-600 hover:bg-green-700 rounded-md text-sm flex items-center gap-1'
+									>
+										<Check size={16} /> Завершить аренду
+									</button>
+								)}
+						</div>
+					</div>
+				</div>
+			)}
+
+			{showExtendModal && selectedCustomer && (
 				<div className='fixed inset-0 bg-black/60 flex items-center justify-center z-50'>
 					<div className='bg-[#1c1c1f] border border-[#2b2b2e] rounded-xl p-6 w-80 text-white flex flex-col gap-3 shadow-lg'>
 						<h2 className='text-lg font-semibold mb-2'>
-							Продлить аренду {selectedCustomer?.fullName}
+							Продлить аренду {selectedCustomer.fullName}
 						</h2>
 						<input
 							type='number'
@@ -241,7 +409,7 @@ export function RentPage() {
 						/>
 						<div className='flex justify-end gap-3 mt-2'>
 							<button
-								onClick={() => setShowModal(false)}
+								onClick={() => setShowExtendModal(false)}
 								className='px-3 py-1 rounded-md bg-gray-600 hover:bg-gray-700 transition'
 							>
 								Отмена
@@ -249,6 +417,44 @@ export function RentPage() {
 							<button
 								onClick={handleExtendSave}
 								className='px-3 py-1 rounded-md bg-orange-600 hover:bg-orange-700 transition'
+							>
+								Сохранить
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{showAddTimeModal && selectedCustomer && (
+				<div className='fixed inset-0 bg-black/60 flex items-center justify-center z-50'>
+					<div className='bg-[#1c1c1f] border border-[#2b2b2e] rounded-xl p-6 w-80 text-white flex flex-col gap-3 shadow-lg'>
+						<h2 className='text-lg font-semibold mb-2'>
+							Добавить время {selectedCustomer.fullName}
+						</h2>
+						<input
+							type='number'
+							placeholder='Часы'
+							value={addHours}
+							onChange={e => setAddHours(e.target.value)}
+							className='bg-transparent border border-[#2b2b2e] rounded-md px-3 py-2 outline-none focus:border-yellow-500'
+						/>
+						<input
+							type='number'
+							placeholder='Сумма ₽'
+							value={addSum}
+							onChange={e => setAddSum(e.target.value)}
+							className='bg-transparent border border-[#2b2b2e] rounded-md px-3 py-2 outline-none focus:border-yellow-500'
+						/>
+						<div className='flex justify-end gap-3 mt-2'>
+							<button
+								onClick={() => setShowAddTimeModal(false)}
+								className='px-3 py-1 rounded-md bg-gray-600 hover:bg-gray-700 transition'
+							>
+								Отмена
+							</button>
+							<button
+								onClick={handleAddTimeSave}
+								className='px-3 py-1 rounded-md bg-yellow-600 hover:bg-yellow-700 transition'
 							>
 								Сохранить
 							</button>

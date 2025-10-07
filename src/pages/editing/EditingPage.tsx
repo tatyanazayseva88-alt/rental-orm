@@ -14,15 +14,21 @@ interface ICustomerSource {
 interface IGear {
 	id: number
 	name: string
-	price: number
 	count: number
+	price: number
+	purchasePrice?: number
 }
 
 export function EditingPage() {
 	const [sources, setSources] = useState<ICustomerSource[]>([])
 	const [newSource, setNewSource] = useState('')
 	const [gears, setGears] = useState<IGear[]>([])
-	const [newGear, setNewGear] = useState({ name: '', price: '', count: '' })
+	const [newGear, setNewGear] = useState({
+		name: '',
+		count: '',
+		purchasePrice: '',
+		price: ''
+	})
 	const [loading, setLoading] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 
@@ -31,7 +37,6 @@ export function EditingPage() {
 		fetchGears()
 	}, [])
 
-	// ---------- SOURCES ----------
 	const fetchSources = async () => {
 		try {
 			const { data } = await axios.get<ICustomerSource[]>(
@@ -48,9 +53,7 @@ export function EditingPage() {
 		if (!newSource.trim()) return
 		try {
 			setLoading(true)
-			await axios.post(`${API_URL}/api/customer-sources`, {
-				name: newSource
-			})
+			await axios.post(`${API_URL}/api/customer-sources`, { name: newSource })
 			setNewSource('')
 			fetchSources()
 		} catch (err) {
@@ -74,7 +77,6 @@ export function EditingPage() {
 		}
 	}
 
-	// ---------- GEARS ----------
 	const fetchGears = async () => {
 		try {
 			const { data } = await axios.get<IGear[]>(`${API_URL}/api/gear`)
@@ -86,15 +88,18 @@ export function EditingPage() {
 	}
 
 	const addGear = async () => {
-		if (!newGear.name.trim() || !newGear.price || !newGear.count) return
+		if (!newGear.name.trim() || !newGear.count || !newGear.price) return
 		try {
 			setLoading(true)
 			await axios.post(`${API_URL}/api/gear/create`, {
 				name: newGear.name,
-				price: Number(newGear.price),
-				count: Number(newGear.count)
+				count: Number(newGear.count),
+				purchasePrice: newGear.purchasePrice
+					? Number(newGear.purchasePrice)
+					: undefined,
+				price: Number(newGear.price)
 			})
-			setNewGear({ name: '', price: '', count: '' })
+			setNewGear({ name: '', count: '', purchasePrice: '', price: '' })
 			fetchGears()
 		} catch (err) {
 			console.error(err)
@@ -170,17 +175,26 @@ export function EditingPage() {
 							className='h-8 rounded-md px-3 text-white bg-[#25252a] placeholder-gray-400 border border-[#2b2b2e] focus:outline-none focus:border-white'
 						/>
 						<InputField
-							placeholder='Цена'
-							value={newGear.price}
-							type='number'
-							onChange={e => setNewGear({ ...newGear, price: e.target.value })}
-							className='h-8 rounded-md px-3 text-white bg-[#25252a] placeholder-gray-400 border border-[#2b2b2e] focus:outline-none focus:border-white'
-						/>
-						<InputField
 							placeholder='Количество'
 							value={newGear.count}
 							type='number'
 							onChange={e => setNewGear({ ...newGear, count: e.target.value })}
+							className='h-8 rounded-md px-3 text-white bg-[#25252a] placeholder-gray-400 border border-[#2b2b2e] focus:outline-none focus:border-white'
+						/>
+						<InputField
+							placeholder='Цена закупки'
+							value={newGear.purchasePrice}
+							type='number'
+							onChange={e =>
+								setNewGear({ ...newGear, purchasePrice: e.target.value })
+							}
+							className='h-8 rounded-md px-3 text-white bg-[#25252a] placeholder-gray-400 border border-[#2b2b2e] focus:outline-none focus:border-white'
+						/>
+						<InputField
+							placeholder='Цена продажи'
+							value={newGear.price}
+							type='number'
+							onChange={e => setNewGear({ ...newGear, price: e.target.value })}
 							className='h-8 rounded-md px-3 text-white bg-[#25252a] placeholder-gray-400 border border-[#2b2b2e] focus:outline-none focus:border-white'
 						/>
 						<Button
@@ -200,7 +214,9 @@ export function EditingPage() {
 								<div className='flex flex-col'>
 									<span className='text-white'>{g.name}</span>
 									<span className='text-gray-400 text-sm'>
-										Цена: {g.price}₽, Кол-во: {g.count}
+										• Цена закупки: {g.purchasePrice}₽ <br />• Цена продажи:{' '}
+										{g.price}₽
+										<br />• Кол-во: {g.count}
 									</span>
 								</div>
 								<X

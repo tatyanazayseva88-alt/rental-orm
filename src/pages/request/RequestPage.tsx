@@ -145,6 +145,7 @@ export default function RequestPage() {
 					/>
 
 					<div className='flex flex-col w-full gap-3'>
+						<h3 className='ml-1 text-white'>Дата начала аренды</h3>
 						<InputField
 							type='datetime-local'
 							value={formData.rentalStart}
@@ -155,6 +156,7 @@ export default function RequestPage() {
 							className='flex-1 min-w-0 rounded-md'
 							placeholder='Дата начала аренды'
 						/>
+						<h3 className='ml-1 text-white'>Дата окончания аренды</h3>
 						<InputField
 							type='datetime-local'
 							value={formData.rentalEnd}
