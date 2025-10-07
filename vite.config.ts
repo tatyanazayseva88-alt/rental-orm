@@ -14,6 +14,6 @@ export default defineConfig({
 		tsconfigPaths()
 	],
 	server: {
-		allowedHosts: ['fd023de43480.ngrok-free.app']
+		allowedHosts: ['rental-orm-8esg.vercel.app']
 	}
 })
