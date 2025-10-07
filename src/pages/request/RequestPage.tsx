@@ -3,7 +3,6 @@ import axios from 'axios'
 import { Layout } from '@/components/layout/Layout'
 import { Button } from '@/components/ui/button/Button'
 import { InputField } from '@/components/ui/fields/InputField'
-import { NumberSelectField } from '@/components/ui/fields/NumberSelectField'
 import { SelectWidget, type IGear } from '@/components/ui/select/SelectWidget'
 import { TextAreaField } from '@/components/ui/fields/TextAreaField'
 import { API_URL } from '@/constants/backend.constants'
@@ -18,17 +17,16 @@ export default function RequestPage() {
 		name: '',
 		phone: '',
 		sourceId: 0,
-		rentalDateTime: '',
-		rentalPeriod: '',
-		rentalUnit: 'hours',
+		rentalStart: '',
+		rentalEnd: '',
 		description: ''
 	})
 	const [errors, setErrors] = useState({
 		name: false,
 		phone: false,
 		sourceId: false,
-		rentalDateTime: false,
-		rentalPeriod: false,
+		rentalStart: false,
+		rentalEnd: false,
 		selectWidget: false,
 		description: false
 	})
@@ -56,8 +54,8 @@ export default function RequestPage() {
 			name: !formData.name.trim(),
 			phone: !formData.phone.trim(),
 			sourceId: !formData.sourceId,
-			rentalDateTime: !formData.rentalDateTime.trim(),
-			rentalPeriod: !formData.rentalPeriod.trim(),
+			rentalStart: !formData.rentalStart.trim(),
+			rentalEnd: !formData.rentalEnd.trim(),
 			selectWidget: !gear.some(g => g.selectedCount > 0),
 			description: !formData.description.trim()
 		}
@@ -69,9 +67,8 @@ export default function RequestPage() {
 				fullName: formData.name,
 				phone: formData.phone,
 				sourceId: formData.sourceId,
-				rentalDateTime: formData.rentalDateTime,
-				rentalPeriod: formData.rentalPeriod,
-				rentalUnit: formData.rentalUnit,
+				rentalStart: formData.rentalStart,
+				rentalEnd: formData.rentalEnd,
 				description: formData.description,
 				gears: gear
 					.filter(g => g.selectedCount > 0)
@@ -81,9 +78,8 @@ export default function RequestPage() {
 				name: '',
 				phone: '',
 				sourceId: 0,
-				rentalDateTime: '',
-				rentalPeriod: '',
-				rentalUnit: 'hours',
+				rentalStart: '',
+				rentalEnd: '',
 				description: ''
 			})
 			setGear(prev => prev.map(g => ({ ...g, selectedCount: 0 })))
@@ -151,28 +147,23 @@ export default function RequestPage() {
 					<div className='flex flex-col w-full gap-3'>
 						<InputField
 							type='datetime-local'
-							value={formData.rentalDateTime}
+							value={formData.rentalStart}
 							onChange={e =>
-								setFormData({ ...formData, rentalDateTime: e.target.value })
+								setFormData({ ...formData, rentalStart: e.target.value })
 							}
+							isError={errors.rentalStart}
 							className='flex-1 min-w-0 rounded-md'
+							placeholder='Дата начала аренды'
 						/>
-						<NumberSelectField
-							label='Срок аренды'
-							value={formData.rentalPeriod}
+						<InputField
+							type='datetime-local'
+							value={formData.rentalEnd}
 							onChange={e =>
-								setFormData({ ...formData, rentalPeriod: e.target.value })
+								setFormData({ ...formData, rentalEnd: e.target.value })
 							}
-							selectOptions={[
-								{ value: 'hours', label: 'Часы' },
-								{ value: 'days', label: 'Дни' },
-								{ value: 'weeks', label: 'Недели' }
-							]}
-							valueSelect={formData.rentalUnit}
-							onChangeSelect={value =>
-								setFormData({ ...formData, rentalUnit: value })
-							}
-							isError={errors.rentalPeriod}
+							isError={errors.rentalEnd}
+							className='flex-1 min-w-0 rounded-md'
+							placeholder='Дата окончания аренды'
 						/>
 					</div>
 

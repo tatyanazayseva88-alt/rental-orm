@@ -34,6 +34,31 @@ interface ICustomer {
 	timeLeft?: string
 }
 
+const getCustomerTimeData = (c: ICustomer) => {
+	const now = dayjs()
+	const start = dayjs(c.rentalDateTime)
+	const end = start.add(Number(c.rentalPeriod || 0), 'hour')
+
+	let status: StatusType
+	if (now.isBefore(start)) status = 'Ожидание'
+	else if (now.isBefore(end)) status = 'Аренда'
+	else status = 'Закончилась'
+
+	let timeLeft = ''
+	if (status === 'Аренда') {
+		const diff = end.diff(now)
+		const dur = dayjs.duration(diff)
+		const parts: string[] = []
+		if (dur.days()) parts.push(`${dur.days()} дн`)
+		if (dur.hours()) parts.push(`${dur.hours()} ч`)
+		if (dur.minutes()) parts.push(`${dur.minutes()} м`)
+		if (!dur.days() && !dur.hours()) parts.push(`${dur.seconds()} с`)
+		timeLeft = parts.join(' ')
+	}
+
+	return { status, timeLeft, start, end }
+}
+
 export function RentPage() {
 	const [customers, setCustomers] = useState<ICustomer[]>([])
 	const [showModal, setShowModal] = useState(false)
@@ -61,15 +86,7 @@ export function RentPage() {
 
 	const mapCustomers = (data: ICustomer[]) => {
 		return data.map(c => {
-			const now = dayjs()
-			const start = dayjs(c.rentalDateTime)
-			const end = start.add(Number(c.rentalPeriod), 'hour')
-
-			let status: StatusType
-			if (now.isBefore(start)) status = 'Ожидание'
-			else if (now.isBefore(end)) status = 'Аренда'
-			else status = 'Закончилась'
-
+			const { status, timeLeft } = getCustomerTimeData(c)
 			let totalSum = c.totalSum ?? 0
 			if (!c.totalSum && c.customerGears) {
 				totalSum = c.customerGears.reduce(
@@ -77,42 +94,24 @@ export function RentPage() {
 					0
 				)
 			}
-
-			let timeLeft = ''
-			if (status === 'Аренда') {
-				const diff = end.diff(now)
-				const dur = dayjs.duration(diff)
-				const parts = []
-				if (dur.days()) parts.push(`${dur.days()} дн`)
-				if (dur.hours()) parts.push(`${dur.hours()} ч`)
-				if (dur.minutes()) parts.push(`${dur.minutes()} м`)
-				if (!dur.days() && !dur.hours()) parts.push(`${dur.seconds()} с`)
-				timeLeft = parts.join(' ')
-			}
-
 			return { ...c, status, totalSum, timeLeft }
 		})
 	}
 
 	const updateTimeLeft = () => {
-		setCustomers(prev => {
-			const updated = mapCustomers(prev)
-			return sortCustomers(updated)
-		})
+		setCustomers(prev => sortCustomers(mapCustomers(prev)))
 	}
 
 	const sortCustomers = (arr: ICustomer[]) => {
 		return [...arr].sort((a, b) => {
-			const startA = dayjs(a.rentalDateTime)
-			const endA = startA.add(Number(a.rentalPeriod), 'hour')
-			const startB = dayjs(b.rentalDateTime)
-			const endB = startB.add(Number(b.rentalPeriod), 'hour')
+			const { start: startA, end: endA } = getCustomerTimeData(a)
+			const { start: startB, end: endB } = getCustomerTimeData(b)
 
-			const statusOrder = (status: StatusType) =>
-				status === 'Аренда' ? 1 : status === 'Ожидание' ? 2 : 3
+			const statusOrder = (s: StatusType) =>
+				s === 'Аренда' ? 1 : s === 'Ожидание' ? 2 : 3
 
-			const orderDiff = statusOrder(a.status!) - statusOrder(b.status!)
-			if (orderDiff !== 0) return orderDiff
+			const diff = statusOrder(a.status!) - statusOrder(b.status!)
+			if (diff !== 0) return diff
 
 			if (a.status === 'Аренда' && b.status === 'Аренда') return endA.diff(endB)
 			if (a.status === 'Ожидание' && b.status === 'Ожидание')

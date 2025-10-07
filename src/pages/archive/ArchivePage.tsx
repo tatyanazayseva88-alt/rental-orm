@@ -2,7 +2,13 @@ import { useState, useEffect } from 'react'
 import axios from 'axios'
 import { Layout } from '@/components/layout/Layout'
 import { ArrowDownUp, Trash2, X } from 'lucide-react'
+import dayjs from 'dayjs'
+import duration from 'dayjs/plugin/duration'
 import { API_URL } from '@/constants/backend.constants'
+
+dayjs.extend(duration)
+
+type StatusType = 'Аренда' | 'Закончилась' | 'Ожидание'
 
 interface ICustomer {
 	id: number
@@ -10,10 +16,23 @@ interface ICustomer {
 	phone: string
 	source?: { name: string }
 	totalSum?: number
-	status?: 'Аренда' | 'Закончилась' | 'Ожидание'
+	status?: StatusType
 	rentalDateTime?: string
 	rentalPeriod?: string
 	description?: string
+}
+
+const getCustomerTimeData = (c: ICustomer) => {
+	const now = dayjs()
+	const start = dayjs(c.rentalDateTime)
+	const end = start.add(Number(c.rentalPeriod || 0), 'hour')
+
+	let status: StatusType
+	if (now.isBefore(start)) status = 'Ожидание'
+	else if (now.isBefore(end)) status = 'Аренда'
+	else status = 'Закончилась'
+
+	return { status }
 }
 
 export function ArchivePage() {
@@ -37,25 +56,8 @@ export function ArchivePage() {
 	const fetchCustomers = async () => {
 		try {
 			const { data } = await axios.get<ICustomer[]>(`${API_URL}/api/customer`)
-			const filtered = data
-				.map(c => {
-					const now = new Date()
-					const start = c.rentalDateTime
-						? new Date(c.rentalDateTime)
-						: new Date()
-					const periodHours = Number(c.rentalPeriod ?? 0)
-					const end = new Date(start.getTime() + periodHours * 60 * 60 * 1000)
-
-					let status: ICustomer['status'] = 'Ожидание'
-					if (now < start) status = 'Ожидание'
-					else if (now >= start && now <= end) status = 'Аренда'
-					else status = 'Закончилась'
-
-					return { ...c, status }
-				})
-				.filter(c => c.status !== 'Ожидание')
-
-			setCustomers(filtered)
+			const mapped = data.map(c => ({ ...c, ...getCustomerTimeData(c) }))
+			setCustomers(mapped.filter(c => c.status !== 'Ожидание'))
 		} catch (err) {
 			console.error(err)
 		}
@@ -201,9 +203,11 @@ export function ArchivePage() {
 											setEditing({ id: c.id, field: 'totalSum' })
 											setEditValue(String(c.totalSum ?? 0))
 										}}
+										onDoubleClick={() => setSelectedCustomer(c)}
 									>
 										{editing?.id === c.id && editing.field === 'totalSum' ? (
 											<input
+												type='number'
 												value={editValue}
 												onChange={e => setEditValue(e.target.value)}
 												onBlur={() => saveEdit(c.id, 'totalSum')}
@@ -219,18 +223,7 @@ export function ArchivePage() {
 									</td>
 
 									<td className='px-6 py-3 text-gray-300'>
-										{c.description ? (
-											<button
-												onClick={() => setSelectedCustomer(c)}
-												className='text-orange-400 hover:underline'
-											>
-												{c.description.length > 30
-													? c.description.slice(0, 30) + '...'
-													: c.description}
-											</button>
-										) : (
-											<span className='text-gray-500'>–</span>
-										)}
+										{c.description || '–'}
 									</td>
 
 									<td className='px-6 py-3'>
@@ -238,7 +231,7 @@ export function ArchivePage() {
 											className={`px-2 py-1 rounded-md text-sm font-medium ${
 												c.status === 'Аренда'
 													? 'bg-orange-500 text-white'
-													: 'bg-gray-600 text-white'
+													: 'bg-[#3a3a3a] text-white'
 											}`}
 										>
 											{c.status}
@@ -246,12 +239,14 @@ export function ArchivePage() {
 									</td>
 
 									{hoveredId === c.id && (
-										<button
-											onClick={() => deleteCustomer(c.id)}
-											className='absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 transition cursor-pointer'
-										>
-											<Trash2 size={18} />
-										</button>
+										<td className='absolute right-2 top-1/2 -translate-y-1/2 flex gap-2'>
+											<button
+												onClick={() => deleteCustomer(c.id)}
+												className='text-red-500 hover:text-red-700 transition'
+											>
+												<Trash2 size={18} />
+											</button>
+										</td>
 									)}
 								</tr>
 							))}
@@ -262,19 +257,42 @@ export function ArchivePage() {
 
 			{selectedCustomer && (
 				<div className='fixed inset-0 bg-black/60 flex items-center justify-center z-50'>
-					<div className='bg-[#1c1c1f] rounded-xl max-w-lg w-full p-6 relative border border-[#2b2b2e]'>
-						<button
-							onClick={() => setSelectedCustomer(null)}
-							className='absolute right-4 top-4 text-gray-400 hover:text-white transition'
-						>
-							<X size={20} />
-						</button>
-						<h2 className='text-xl font-semibold text-white mb-4'>
-							Описание клиента
-						</h2>
-						<p className='text-gray-300 whitespace-pre-line'>
-							{selectedCustomer.description}
-						</p>
+					<div className='bg-[#1c1c1f] border border-[#2b2b2e] rounded-xl p-6 w-80 text-white flex flex-col gap-3 shadow-lg'>
+						<h2 className='text-lg font-semibold'>Описание клиента</h2>
+						<textarea
+							value={selectedCustomer.description ?? ''}
+							onChange={e =>
+								setSelectedCustomer({
+									...selectedCustomer,
+									description: e.target.value
+								})
+							}
+							rows={4}
+							className='bg-transparent border border-[#2b2b2e] rounded-md px-3 py-2 outline-none focus:border-orange-500 resize-none'
+						/>
+						<div className='flex justify-end gap-3'>
+							<button
+								onClick={() => setSelectedCustomer(null)}
+								className='px-3 py-1 rounded-md bg-gray-600 hover:bg-gray-700 transition flex items-center gap-1'
+							>
+								<X size={14} /> Закрыть
+							</button>
+							<button
+								onClick={async () => {
+									await axios.put(
+										`${API_URL}/api/customer/${selectedCustomer.id}`,
+										{
+											description: selectedCustomer.description
+										}
+									)
+									setSelectedCustomer(null)
+									fetchCustomers()
+								}}
+								className='px-3 py-1 rounded-md bg-orange-600 hover:bg-orange-700 transition'
+							>
+								Сохранить
+							</button>
+						</div>
 					</div>
 				</div>
 			)}
