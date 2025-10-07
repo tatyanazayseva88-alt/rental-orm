@@ -1,0 +1,9 @@
+@import 'tailwindcss';
+
+* {
+	color: white;
+}
+
+@theme {
+	--font-roboto: 'Roboto', sans-serif;
+}
