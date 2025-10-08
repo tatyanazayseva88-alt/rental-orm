@@ -19,7 +19,8 @@ export default function RequestPage() {
 		sourceId: 0,
 		rentalStart: '',
 		rentalEnd: '',
-		description: ''
+		description: '',
+		discount: ''
 	})
 	const [errors, setErrors] = useState({
 		name: false,
@@ -33,20 +34,20 @@ export default function RequestPage() {
 	const [gear, setGear] = useState<IGear[]>([])
 	const [sources, setSources] = useState<ICustomerSource[]>([])
 	const [successMessage, setSuccessMessage] = useState<string | null>(null)
+	const discountNum = Number(formData.discount) || 0
 
 	useEffect(() => {
-		const fetchSources = async () => {
-			try {
-				const { data } = await axios.get<ICustomerSource[]>(
-					`${API_URL}/api/customer-sources`
-				)
-				setSources(data)
-			} catch (err) {
-				console.error('Ошибка при загрузке источников', err)
-			}
-		}
-		fetchSources()
+		axios
+			.get<ICustomerSource[]>(`${API_URL}/api/customer-sources`)
+			.then(res => setSources(res.data))
+			.catch(console.error)
 	}, [])
+
+	const calculateDays = (start: string, end: string) => {
+		if (!start || !end) return 1
+		const diff = new Date(end).getTime() - new Date(start).getTime()
+		return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)))
+	}
 
 	const handleSubmit = async () => {
 		setSuccessMessage(null)
@@ -62,6 +63,8 @@ export default function RequestPage() {
 		setErrors(newErrors)
 		if (Object.values(newErrors).some(Boolean)) return
 
+		const days = calculateDays(formData.rentalStart, formData.rentalEnd)
+
 		try {
 			await axios.post(`${API_URL}/api/customer/create`, {
 				fullName: formData.name,
@@ -70,9 +73,10 @@ export default function RequestPage() {
 				rentalStart: formData.rentalStart,
 				rentalEnd: formData.rentalEnd,
 				description: formData.description,
+				discount: discountNum,
 				gears: gear
 					.filter(g => g.selectedCount > 0)
-					.map(g => ({ gear_id: g.id, count: g.selectedCount }))
+					.map(g => ({ gear_id: g.id, count: g.selectedCount, days }))
 			})
 			setFormData({
 				name: '',
@@ -80,34 +84,34 @@ export default function RequestPage() {
 				sourceId: 0,
 				rentalStart: '',
 				rentalEnd: '',
-				description: ''
+				description: '',
+				discount: ''
 			})
 			setGear(prev => prev.map(g => ({ ...g, selectedCount: 0 })))
 			setSuccessMessage('✅ Заявка успешно создана!')
 		} catch (err) {
-			console.error('Ошибка при создании заявки:', err)
+			console.error(err)
 		}
 	}
 
 	return (
 		<Layout>
 			<section className='min-h-screen flex flex-col justify-center items-center gap-3 py-6'>
-				<div className='h-auto w-full max-w-md bg-[#1c1c1f] rounded-xl border border-[#2b2b2e] p-4 flex flex-col gap-3'>
+				<div className='w-full max-w-md bg-[#1c1c1f] rounded-xl border border-[#2b2b2e] p-4 flex flex-col gap-3'>
 					<InputField
 						placeholder='Фамилия Имя Отчество'
 						value={formData.name}
+						className='rounded-md'
 						onChange={e => setFormData({ ...formData, name: e.target.value })}
 						isError={errors.name}
-						className='rounded-md'
 					/>
 					<InputField
 						placeholder='Номер телефона'
+						className='rounded-md'
 						value={formData.phone}
 						onChange={e => setFormData({ ...formData, phone: e.target.value })}
 						isError={errors.phone}
-						className='rounded-md'
 					/>
-
 					<select
 						value={formData.sourceId}
 						onChange={e =>
@@ -135,37 +139,47 @@ export default function RequestPage() {
 							setFormData({ ...formData, description: e.target.value })
 						}
 						isError={errors.description}
-						className='rounded-md'
 					/>
 
 					<SelectWidget
 						showError={errors.selectWidget}
-						onChange={setGear}
+						onChange={(g, _) => setGear(g)}
 						resetSignal={successMessage}
+						rentalStart={formData.rentalStart}
+						rentalEnd={formData.rentalEnd}
+						discount={discountNum}
+					/>
+
+					<InputField
+						label='Скидка (%)'
+						type='number'
+						value={formData.discount}
+						onChange={e =>
+							setFormData({ ...formData, discount: e.target.value })
+						}
+						className='rounded-md'
 					/>
 
 					<div className='flex flex-col w-full gap-3'>
-						<h3 className='ml-1 text-white'>Дата начала аренды</h3>
+						<h3 className='text-white'>Дата начала аренды</h3>
 						<InputField
 							type='datetime-local'
 							value={formData.rentalStart}
+							className='rounded-md'
 							onChange={e =>
 								setFormData({ ...formData, rentalStart: e.target.value })
 							}
 							isError={errors.rentalStart}
-							className='flex-1 min-w-0 rounded-md'
-							placeholder='Дата начала аренды'
 						/>
-						<h3 className='ml-1 text-white'>Дата окончания аренды</h3>
+						<h3 className='text-white'>Дата окончания аренды</h3>
 						<InputField
 							type='datetime-local'
 							value={formData.rentalEnd}
+							className='rounded-md'
 							onChange={e =>
 								setFormData({ ...formData, rentalEnd: e.target.value })
 							}
 							isError={errors.rentalEnd}
-							className='flex-1 min-w-0 rounded-md'
-							placeholder='Дата окончания аренды'
 						/>
 					</div>
 

@@ -24,6 +24,7 @@ interface ICustomerGear {
 type StatusType = 'Аренда' | 'Ожидание' | 'Закончилась'
 
 interface ICustomer {
+	secondsLeft: number
 	id: number
 	fullName: string
 	phone: string
@@ -48,31 +49,34 @@ const getCustomerTimeData = (c: ICustomer) => {
 	let status: StatusType
 	let timeLeft = ''
 
-	if (now.isBefore(start)) {
-		status = 'Ожидание'
-		const diff = start.diff(now)
-		const dur = dayjs.duration(diff)
-		const parts: string[] = []
-		if (dur.days()) parts.push(`${dur.days()} дн`)
-		if (dur.hours()) parts.push(`${dur.hours()} ч`)
-		if (dur.minutes()) parts.push(`${dur.minutes()} м`)
-		if (!dur.days() && !dur.hours() && !dur.minutes())
-			parts.push(`${dur.seconds()} с`)
-		timeLeft = parts.join(' ')
-	} else if (now.isBefore(end)) {
-		status = 'Аренда'
-		const diff = end.diff(now)
-		const dur = dayjs.duration(diff)
-		const parts: string[] = []
-		if (dur.days()) parts.push(`${dur.days()} дн`)
-		if (dur.hours()) parts.push(`${dur.hours()} ч`)
-		if (dur.minutes()) parts.push(`${dur.minutes()} м`)
-		if (!dur.days() && !dur.hours() && !dur.minutes())
-			parts.push(`${dur.seconds()} с`)
-		timeLeft = parts.join(' ')
+	if (!c.completed) {
+		if (now.isBefore(start)) {
+			status = 'Ожидание'
+			const dur = dayjs.duration(start.diff(now))
+			const parts: string[] = []
+			if (dur.days()) parts.push(`${dur.days()} дн`)
+			if (dur.hours()) parts.push(`${dur.hours()} ч`)
+			if (dur.minutes()) parts.push(`${dur.minutes()} м`)
+			if (!dur.days() && !dur.hours() && !dur.minutes())
+				parts.push(`${dur.seconds()} с`)
+			timeLeft = parts.join(' ')
+		} else if (now.isBefore(end)) {
+			status = 'Аренда'
+			const dur = dayjs.duration(end.diff(now))
+			const parts: string[] = []
+			if (dur.days()) parts.push(`${dur.days()} дн`)
+			if (dur.hours()) parts.push(`${dur.hours()} ч`)
+			if (dur.minutes()) parts.push(`${dur.minutes()} м`)
+			if (!dur.days() && !dur.hours() && !dur.minutes())
+				parts.push(`${dur.seconds()} с`)
+			timeLeft = parts.join(' ')
+		} else {
+			status = 'Закончилась'
+			timeLeft = '1 с'
+		}
 	} else {
 		status = 'Закончилась'
-		timeLeft = c.completed ? '' : '1 с'
+		timeLeft = ''
 	}
 
 	return { status, timeLeft }
@@ -81,11 +85,8 @@ const getCustomerTimeData = (c: ICustomer) => {
 export function RentPage() {
 	const [customers, setCustomers] = useState<ICustomer[]>([])
 	const [showExtendModal, setShowExtendModal] = useState(false)
-	const [showAddTimeModal, setShowAddTimeModal] = useState(false)
 	const [extendHours, setExtendHours] = useState('')
 	const [extendSum, setExtendSum] = useState('')
-	const [addHours, setAddHours] = useState('')
-	const [addSum, setAddSum] = useState('')
 	const [selectedCustomer, setSelectedCustomer] = useState<ICustomer | null>(
 		null
 	)
@@ -115,7 +116,17 @@ export function RentPage() {
 					0
 				)
 			}
-			return { ...c, status, totalSum, timeLeft }
+
+			let secondsLeft = 0
+			if (c.rentalEnd) {
+				const end = dayjs(c.rentalEnd)
+				secondsLeft = Math.max(end.diff(dayjs(), 'second'), 0)
+			} else if (c.rentalStart) {
+				const start = dayjs(c.rentalStart)
+				secondsLeft = Math.max(start.diff(dayjs(), 'second'), 0)
+			}
+
+			return { ...c, status, totalSum, timeLeft, secondsLeft }
 		})
 
 	const updateTimeLeft = () => {
@@ -138,7 +149,14 @@ export function RentPage() {
 				if (c.status === 'Закончилась' && c.completed) return 3
 				return 4
 			}
-			return order(a) - order(b)
+
+			const orderDiff = order(a) - order(b)
+			if (orderDiff !== 0) return orderDiff
+
+			if (a.status === 'Аренда' || a.status === 'Ожидание')
+				return (a.secondsLeft ?? 0) - (b.secondsLeft ?? 0)
+
+			return 0
 		})
 	}
 
@@ -147,13 +165,6 @@ export function RentPage() {
 		setExtendHours('')
 		setExtendSum('')
 		setShowExtendModal(true)
-	}
-
-	const handleAddTimeClick = (customer: ICustomer) => {
-		setSelectedCustomer(customer)
-		setAddHours('')
-		setAddSum('')
-		setShowAddTimeModal(true)
 	}
 
 	const handleExtendSave = async () => {
@@ -184,37 +195,6 @@ export function RentPage() {
 		} catch (err) {
 			console.error(err)
 			alert('Ошибка при продлении аренды')
-		}
-	}
-
-	const handleAddTimeSave = async () => {
-		if (!selectedCustomer) return
-		const addH = Number(addHours)
-		const addS = Number(addSum)
-		if (!addH || !addS) return alert('Укажи корректные данные')
-
-		try {
-			const updatedEnd = dayjs(selectedCustomer.rentalEnd)
-				.add(addH, 'hour')
-				.toISOString()
-			const updatedSum = (selectedCustomer.totalSum ?? 0) + addS
-
-			await axios.put(`${API_URL}/api/customer/${selectedCustomer.id}`, {
-				rentalEnd: updatedEnd,
-				totalSum: updatedSum
-			})
-
-			setCustomers(prev =>
-				prev.map(c =>
-					c.id === selectedCustomer.id
-						? { ...c, rentalEnd: updatedEnd, totalSum: updatedSum }
-						: c
-				)
-			)
-			setShowAddTimeModal(false)
-		} catch (err) {
-			console.error(err)
-			alert('Ошибка при добавлении времени')
 		}
 	}
 
@@ -271,40 +251,47 @@ export function RentPage() {
 							</tr>
 						</thead>
 						<tbody>
-							{customers.map(c => (
-								<tr
-									key={c.id}
-									className='border-b border-[#2b2b2e] cursor-pointer hover:bg-[#2a2a2e]'
-									onClick={() => setSelectedCustomer(c)}
-								>
-									<td className='px-6 py-3'>{c.fullName}</td>
-									<td className='px-6 py-3'>{c.phone}</td>
-									<td className='px-6 py-3'>
-										<span
-											className={`px-2 py-1 rounded-md text-sm font-medium ${
-												c.status === 'Аренда'
-													? 'bg-orange-500 text-white'
+							{customers
+								.filter(c => !(c.status === 'Закончилась' && c.completed))
+								.map(c => (
+									<tr
+										key={c.id}
+										className='border-b border-[#2b2b2e] cursor-pointer hover:bg-[#2a2a2e]'
+										onClick={() => setSelectedCustomer(c)}
+									>
+										<td className='px-6 py-3'>{c.fullName}</td>
+										<td className='px-6 py-3'>{c.phone}</td>
+										<td className='px-6 py-3'>
+											<span
+												className={`px-2 py-1 rounded-md text-sm font-medium border whitespace-nowrap overflow-ellipsis ${
+													c.status === 'Аренда'
+														? 'border-orange-500 text-orange-400'
+														: c.status === 'Ожидание'
+														? 'border-gray-500 text-gray-300'
+														: c.status === 'Закончилась' && !c.completed
+														? 'border-green-500 text-green-400'
+														: 'border-blue-500 text-blue-400'
+												}`}
+											>
+												{c.status === 'Закончилась' && c.completed
+													? 'Завершено'
+													: c.status === 'Аренда'
+													? 'В работе'
 													: c.status === 'Ожидание'
-													? 'bg-gray-500 text-white'
-													: c.status === 'Закончилась' && !c.completed
-													? 'bg-green-600 text-white'
-													: 'bg-[#3a3a3a] text-white'
-											}`}
-										>
-											{c.status === 'Закончилась' && c.completed
-												? 'Завершена'
-												: c.status}
-										</span>
-									</td>
-									<td className='px-6 py-3'>{c.totalSum}₽</td>
-									<td className='px-6 py-3 text-gray-300'>{c.timeLeft}</td>
-									<td className='px-6 py-3'>
-										{c.customerGears
-											?.map(g => `${g.count} ${g.gear?.name ?? '–'}`)
-											.join(', ')}
-									</td>
-								</tr>
-							))}
+													? 'Раннее бронирование'
+													: 'Закончилась'}
+											</span>
+										</td>
+
+										<td className='px-6 py-3'>{c.totalSum}₽</td>
+										<td className='px-6 py-3 text-gray-300'>{c.timeLeft}</td>
+										<td className='px-6 py-3'>
+											{c.customerGears
+												?.map(g => `${g.count} ${g.gear?.name ?? '–'}`)
+												.join(', ')}
+										</td>
+									</tr>
+								))}
 						</tbody>
 					</table>
 				</div>
@@ -360,12 +347,6 @@ export function RentPage() {
 										Продлить аренду
 									</button>
 									<button
-										onClick={() => handleAddTimeClick(selectedCustomer)}
-										className='px-3 py-1.5 bg-yellow-600 hover:bg-yellow-700 rounded-md text-sm'
-									>
-										Добавить время за сумму
-									</button>
-									<button
 										onClick={() => handleCloseEarly(selectedCustomer.id)}
 										className='px-3 py-1.5 bg-gray-600 hover:bg-gray-700 rounded-md text-sm'
 									>
@@ -417,44 +398,6 @@ export function RentPage() {
 							<button
 								onClick={handleExtendSave}
 								className='px-3 py-1 rounded-md bg-orange-600 hover:bg-orange-700 transition'
-							>
-								Сохранить
-							</button>
-						</div>
-					</div>
-				</div>
-			)}
-
-			{showAddTimeModal && selectedCustomer && (
-				<div className='fixed inset-0 bg-black/60 flex items-center justify-center z-50'>
-					<div className='bg-[#1c1c1f] border border-[#2b2b2e] rounded-xl p-6 w-80 text-white flex flex-col gap-3 shadow-lg'>
-						<h2 className='text-lg font-semibold mb-2'>
-							Добавить время {selectedCustomer.fullName}
-						</h2>
-						<input
-							type='number'
-							placeholder='Часы'
-							value={addHours}
-							onChange={e => setAddHours(e.target.value)}
-							className='bg-transparent border border-[#2b2b2e] rounded-md px-3 py-2 outline-none focus:border-yellow-500'
-						/>
-						<input
-							type='number'
-							placeholder='Сумма ₽'
-							value={addSum}
-							onChange={e => setAddSum(e.target.value)}
-							className='bg-transparent border border-[#2b2b2e] rounded-md px-3 py-2 outline-none focus:border-yellow-500'
-						/>
-						<div className='flex justify-end gap-3 mt-2'>
-							<button
-								onClick={() => setShowAddTimeModal(false)}
-								className='px-3 py-1 rounded-md bg-gray-600 hover:bg-gray-700 transition'
-							>
-								Отмена
-							</button>
-							<button
-								onClick={handleAddTimeSave}
-								className='px-3 py-1 rounded-md bg-yellow-600 hover:bg-yellow-700 transition'
 							>
 								Сохранить
 							</button>

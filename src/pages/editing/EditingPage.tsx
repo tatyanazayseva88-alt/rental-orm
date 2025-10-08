@@ -16,7 +16,6 @@ interface IGear {
 	name: string
 	count: number
 	price: number
-	purchasePrice?: number
 }
 
 export function EditingPage() {
@@ -26,7 +25,6 @@ export function EditingPage() {
 	const [newGear, setNewGear] = useState({
 		name: '',
 		count: '',
-		purchasePrice: '',
 		price: ''
 	})
 	const [loading, setLoading] = useState(false)
@@ -94,12 +92,9 @@ export function EditingPage() {
 			await axios.post(`${API_URL}/api/gear/create`, {
 				name: newGear.name,
 				count: Number(newGear.count),
-				purchasePrice: newGear.purchasePrice
-					? Number(newGear.purchasePrice)
-					: undefined,
 				price: Number(newGear.price)
 			})
-			setNewGear({ name: '', count: '', purchasePrice: '', price: '' })
+			setNewGear({ name: '', count: '', price: '' })
 			fetchGears()
 		} catch (err) {
 			console.error(err)
@@ -125,7 +120,6 @@ export function EditingPage() {
 	return (
 		<Layout>
 			<div className='w-full max-w-md mx-auto mt-8 flex flex-col gap-10'>
-				{/* ===== SOURCES FORM ===== */}
 				<div className='p-6 flex flex-col gap-4 bg-[#1c1c1f] rounded-xl border border-[#2b2b2e]'>
 					<h1 className='text-xl font-bold text-white text-center'>
 						Источники клиентов
@@ -162,7 +156,6 @@ export function EditingPage() {
 					</ul>
 				</div>
 
-				{/* ===== GEAR FORM ===== */}
 				<div className='p-6 flex flex-col gap-4 bg-[#1c1c1f] rounded-xl border border-[#2b2b2e]'>
 					<h1 className='text-xl font-bold text-white text-center'>
 						Инвентарь
@@ -182,16 +175,7 @@ export function EditingPage() {
 							className='h-8 rounded-md px-3 text-white bg-[#25252a] placeholder-gray-400 border border-[#2b2b2e] focus:outline-none focus:border-white'
 						/>
 						<InputField
-							placeholder='Цена закупки'
-							value={newGear.purchasePrice}
-							type='number'
-							onChange={e =>
-								setNewGear({ ...newGear, purchasePrice: e.target.value })
-							}
-							className='h-8 rounded-md px-3 text-white bg-[#25252a] placeholder-gray-400 border border-[#2b2b2e] focus:outline-none focus:border-white'
-						/>
-						<InputField
-							placeholder='Цена продажи'
+							placeholder='Цена аренды'
 							value={newGear.price}
 							type='number'
 							onChange={e => setNewGear({ ...newGear, price: e.target.value })}
@@ -214,9 +198,7 @@ export function EditingPage() {
 								<div className='flex flex-col'>
 									<span className='text-white'>{g.name}</span>
 									<span className='text-gray-400 text-sm'>
-										• Цена закупки: {g.purchasePrice}₽ <br />• Цена продажи:{' '}
-										{g.price}₽
-										<br />• Кол-во: {g.count}
+										• Цена аренды: {g.price}₽ <br />• Кол-во: {g.count}
 									</span>
 								</div>
 								<X

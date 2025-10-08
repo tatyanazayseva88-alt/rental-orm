@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import axios from 'axios'
 import { InputField } from '../fields/InputField'
-import { Plus, Minus, X } from 'lucide-react'
 import { API_URL } from '@/constants/backend.constants'
 
 export interface IGear {
@@ -15,15 +14,20 @@ export interface IGear {
 
 type SelectWidgetProps = {
 	showError?: boolean
-	onChange?: (gear: IGear[]) => void
+	onChange?: (gear: IGear[], total: number) => void
 	resetSignal?: string | null
+	rentalStart?: string
+	rentalEnd?: string
 }
 
 export function SelectWidget({
 	showError,
 	onChange,
-	resetSignal
-}: SelectWidgetProps) {
+	resetSignal,
+	rentalStart,
+	rentalEnd,
+	discount
+}: SelectWidgetProps & { discount?: number }) {
 	const [gear, setGear] = useState<IGear[]>([])
 	const [search, setSearch] = useState('')
 	const [focused, setFocused] = useState(false)
@@ -37,7 +41,6 @@ export function SelectWidget({
 						axios.get(`${API_URL}/api/gear`),
 						axios.get(`${API_URL}/api/customer`)
 					])
-
 				const updated = gearsData.map((g: IGear) => {
 					const taken = customersData
 						.flatMap((c: any) => c.gears ?? [])
@@ -46,10 +49,9 @@ export function SelectWidget({
 					const available = Math.max(g.count - taken, 0)
 					return { ...g, available, selectedCount: 0 }
 				})
-
 				setGear(updated)
 			} catch (error) {
-				console.error('Ошибка при загрузке оборудования:', error)
+				console.error(error)
 			} finally {
 				setLoading(false)
 			}
@@ -58,10 +60,8 @@ export function SelectWidget({
 	}, [])
 
 	useEffect(() => {
-		if (resetSignal) {
+		if (resetSignal)
 			setGear(prev => prev.map(g => ({ ...g, selectedCount: 0 })))
-			setSearch('')
-		}
 	}, [resetSignal])
 
 	const changeCount = (id: number, delta: number) => {
@@ -75,16 +75,29 @@ export function SelectWidget({
 		)
 	}
 
+	const start = rentalStart ? new Date(rentalStart) : null
+	const end = rentalEnd ? new Date(rentalEnd) : null
+	const msInDay = 1000 * 60 * 60 * 24
+	let diffDays = 1
+	if (start && end && end > start) {
+		diffDays = Math.ceil(
+			(end.getTime() - start.getTime() - 1 * 60 * 1000) / msInDay
+		)
+		if (diffDays < 1) diffDays = 1
+	}
+
+	let total = gear.reduce(
+		(acc, item) => acc + item.price * item.selectedCount * diffDays,
+		0
+	)
+	if (discount) total = total - (total * discount) / 100
+
 	useEffect(() => {
-		if (onChange) onChange(gear)
-	}, [gear])
+		if (onChange) onChange(gear, total)
+	}, [gear, total])
 
 	const filtered = gear.filter(item =>
 		item.name.toLowerCase().includes(search.toLowerCase())
-	)
-	const total = gear.reduce(
-		(acc, item) => acc + item.price * item.selectedCount,
-		0
 	)
 
 	return (
@@ -111,11 +124,10 @@ export function SelectWidget({
 						onClick={() => setSearch('')}
 						className='ml-2 p-1 text-gray-400 hover:text-white cursor-pointer transition-colors'
 					>
-						<X size={16} />
+						X
 					</button>
 				)}
 			</div>
-
 			{loading ? (
 				<div className='p-4 text-center text-gray-400'>Загрузка...</div>
 			) : (
@@ -135,28 +147,28 @@ export function SelectWidget({
 								<div className='flex items-center justify-between mt-2'>
 									<button
 										onClick={() => changeCount(item.id, -1)}
+										disabled={item.selectedCount === 0}
 										className={`p-1 ${
 											item.selectedCount === 0
 												? 'text-gray-600 cursor-not-allowed'
 												: 'text-gray-400 hover:text-white cursor-pointer transition-colors'
 										}`}
-										disabled={item.selectedCount === 0}
 									>
-										<Minus size={16} />
+										-
 									</button>
 									<span className='px-2'>x{item.selectedCount ?? 0}</span>
 									<button
 										onClick={() => changeCount(item.id, 1)}
+										disabled={
+											item.selectedCount >= (item.available ?? item.count)
+										}
 										className={`p-1 ${
 											item.selectedCount >= (item.available ?? item.count)
 												? 'text-gray-600 cursor-not-allowed'
 												: 'text-gray-400 hover:text-white cursor-pointer transition-colors'
 										}`}
-										disabled={
-											item.selectedCount >= (item.available ?? item.count)
-										}
 									>
-										<Plus size={16} />
+										+
 									</button>
 								</div>
 							</div>
@@ -164,10 +176,12 @@ export function SelectWidget({
 					</div>
 				</div>
 			)}
-
 			<div className='p-3 border-t border-[#2b2b2e] flex justify-between font-semibold'>
 				<span>Итого:</span>
-				<span>{total} ₽</span>
+				<span>
+					{total.toLocaleString()} ₽ (за {diffDays}{' '}
+					{diffDays === 1 ? 'день' : 'дня'})
+				</span>
 			</div>
 		</div>
 	)

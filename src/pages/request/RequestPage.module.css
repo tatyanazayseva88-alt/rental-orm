@@ -1,0 +1,8 @@
+.input {
+	color: white;
+	background: transparent;
+}
+
+.input::-webkit-calendar-picker-indicator {
+	filter: invert(1);
+}

@@ -166,6 +166,20 @@ export function ArchivePage() {
 		return true
 	})
 
+	const handleDelete = async () => {
+		if (!editCustomer) return
+		if (!confirm(`Удалить клиента ${editCustomer.fullName}?`)) return
+		try {
+			await axios.delete(`${API_URL}/api/customer/${editCustomer.id}`)
+			setSelectedCustomer(null)
+			setEditCustomer(null)
+			fetchCustomers()
+		} catch (err) {
+			console.error(err)
+			alert('Ошибка при удалении')
+		}
+	}
+
 	return (
 		<Layout>
 			<div className='w-full max-w-6xl mx-auto mt-8 px-4'>
@@ -313,15 +327,21 @@ export function ArchivePage() {
 									setSelectedCustomer(null)
 									setEditCustomer(null)
 								}}
-								className='px-3 py-1 rounded-md bg-gray-600 hover:bg-gray-700 transition'
+								className='px-3 py-1 rounded-md bg-gray-600 hover:bg-gray-700 transition cursor-pointer'
 							>
 								Отмена
 							</button>
 							<button
 								onClick={handleSave}
-								className='px-3 py-1 rounded-md bg-orange-600 hover:bg-orange-700 transition'
+								className='px-3 py-1 rounded-md bg-orange-600 hover:bg-orange-700 transition cursor-pointer'
 							>
 								Сохранить изменения
+							</button>
+							<button
+								onClick={handleDelete}
+								className='px-3 py-1 rounded-md bg-red-600 hover:bg-red-800 transition cursor-pointer'
+							>
+								Удалить
 							</button>
 						</div>
 					</div>
